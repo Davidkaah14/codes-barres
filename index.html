@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a5aa8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Codes-barres">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Codes-barres produits</title>
+<style>
+/* Layout: formulaire en haut, résultats en grille de cartes (une carte = un produit réel avec son code-barres). */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --fg:#13202c; --muted:#58697a; --line:#d3dbe3;
+  --accent:#0a5aa8; --accent-fg:#ffffff; --err:#b3261e; --ok:#0d7a5f;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1720; --surface:#17222d; --fg:#e7edf3; --muted:#9aabbb; --line:#2a3947;
+    --accent:#5aa7ee; --accent-fg:#06192b; --err:#ff8a80; --ok:#4fcfaa; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1720; --surface:#17222d; --fg:#e7edf3; --muted:#9aabbb; --line:#2a3947;
+  --accent:#5aa7ee; --accent-fg:#06192b; --err:#ff8a80; --ok:#4fcfaa; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--font);
+  padding:28px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted);max-width:68ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;align-items:end}
+label{display:block;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+select,input{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;min-height:42px}
+select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.weight{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px}
+.span2{grid-column:span 2}
+@media (max-width:520px){.span2{grid-column:auto}}
+button.go{font:inherit;font-weight:600;min-height:42px;padding:0 20px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer}
+button.go:disabled{opacity:.6;cursor:progress}
+#status{font-size:.9rem;color:var(--muted);min-height:1.4em}
+#status.error{color:var(--err)}
+#status.ok{color:var(--ok)}
+.results{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h3{margin:0;font-size:1rem;line-height:1.3;overflow-wrap:anywhere}
+.meta{font-size:.85rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 10px}
+.bars{background:#fff;border-radius:6px;border:1px solid var(--line);padding:8px;display:flex;justify-content:center}
+.bars svg{display:block;width:100%;max-width:300px;height:auto}
+.code{font-family:var(--mono);letter-spacing:.06em}
+.card a{color:var(--accent);font-size:.85rem}
+.chk label{display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:.95rem;color:var(--fg);font-weight:500;margin:0;min-height:42px}
+.chk input{width:auto;min-height:0}
+.price{font-size:.9rem;border-top:1px solid var(--line);padding-top:8px;color:var(--muted);overflow-wrap:anywhere}
+.price strong{color:var(--fg);font-size:1.05rem}
+.price button{font:inherit;font-size:.85rem;background:none;border:1px solid var(--line);color:var(--accent);border-radius:6px;padding:4px 10px;cursor:pointer}
+.note{font-size:.82rem;color:var(--muted);margin:0;max-width:80ch}
+
+[hidden]{display:none!important}
+select,input{font-size:16px}
+.bars{cursor:zoom-in}
+.hint{font-size:.78rem;color:var(--muted);text-align:center;margin:-4px 0 0}
+#full{position:fixed;inset:0;z-index:50;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:max(16px,env(safe-area-inset-top,0px)) 16px max(16px,env(safe-area-inset-bottom,0px));cursor:zoom-out}
+#full svg{width:100%;max-width:640px;height:auto}
+#full p{margin:0;color:#333;font:15px/1.4 system-ui,sans-serif;text-align:center}
+.reload{background:none;border:0;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+.more{display:flex;justify-content:center}
+.more button{font:inherit;font-weight:600;padding:10px 20px;border-radius:6px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer}
+.setup ol{margin:8px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:6px}
+code{font-family:var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Codes-barres produits</h1>
+  <p>Recherche sur une copie d'Open Food Facts gardée sur votre appareil : aucune limite de requêtes, utilisable hors ligne. Choisissez un distributeur, une catégorie et un poids pour obtenir de vrais produits avec leur code-barres à scanner.</p>
+</header>
+
+<section class="panel setup" id="setup" hidden>
+  <strong>La base de données est introuvable</strong>
+  <ol>
+    <li>Placez <code>index_produits.js.gz</code> (ou <code>index_produits.js</code>) dans le même dossier que cette page, sur votre hébergement.</li>
+    <li>Rechargez la page. Vérifiez votre connexion si c'est la première ouverture.</li>
+  </ol>
+</section>
+
+<section class="panel" id="formPanel" hidden>
+  <form id="form">
+    <div><label for="dist">Distributeur</label><select id="dist"></select></div>
+    <div><label for="cat">Catégorie d'aliment</label><select id="cat"></select></div>
+    <div id="catWrap" hidden><label for="catCustom">Mot de la catégorie</label><input id="catCustom" placeholder="ex. miel, honeys"></div>
+    <div><label for="w">Poids ou volume</label>
+      <div class="weight"><input id="w" inputmode="decimal" placeholder="400"><select id="unit" aria-label="Unité"><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="cl">cl</option><option value="l">L</option></select></div>
+    </div>
+    <div><label for="tol">Tolérance sur le poids</label>
+      <select id="tol"><option value="0">Poids exact</option><option value="0.05">± 5 %</option><option value="0.1" selected>± 10 %</option><option value="0.25">± 25 %</option></select>
+    </div>
+    <div><label for="kw">Mots-clés dans le nom</label><input id="kw" placeholder="ex. baguette tradition"></div>
+    <div><label for="sort">Trier par</label>
+      <select id="sort"><option value="pop">Popularité</option><option value="asc">Prix croissant</option><option value="desc">Prix décroissant</option></select>
+    </div>
+    <div class="chk"><label><input type="checkbox" id="onlyPrice"> Seulement avec un prix</label></div>
+    <div class="chk"><label><input type="checkbox" id="withPrice" checked> Chercher aussi les prix en ligne</label></div>
+    <div><button class="go" id="go" type="submit">Chercher</button></div>
+  </form>
+</section>
+
+<div id="status" role="status" aria-live="polite"></div>
+<div class="results" id="results"></div>
+<div class="more"><button id="more" type="button" hidden>Afficher plus de produits</button></div>
+<div id="full" hidden></div>
+<p class="note" id="note"></p>
+<p class="note"><button class="reload" id="reload" type="button">Mettre à jour la base de données</button> (efface la copie gardée sur cet appareil et la retélécharge)</p>
+</div>
+
+<script>
+const PRICES="https://prices.openfoodfacts.org/api/v1/prices", PAGE=24;
+const CATEGORIES={
+ "Toutes catégories":"",
+ "Pains":"en:breads","Viennoiseries":"en:viennoiseries","Pâtisseries et gâteaux":"en:cakes",
+ "Biscuits":"en:biscuits","Chocolats":"en:chocolates","Fromages":"en:cheeses",
+ "Yaourts":"en:yogurts","Lait":"en:milks","Beurres":"en:butters","Œufs":"en:eggs",
+ "Charcuteries":"en:prepared-meats","Viandes":"en:meats","Poissons":"en:fishes",
+ "Plats préparés":"en:meals","Pizzas":"en:pizzas","Pâtes":"en:pastas","Riz":"en:rices",
+ "Fruits":"en:fruits","Légumes":"en:vegetables","Conserves":"en:canned-foods",
+ "Boissons":"en:beverages","Jus de fruits":"en:fruit-juices","Eaux":"en:waters",
+ "Alcools (toutes boissons alcoolisées)":"en:alcoholic-beverages","Vins":"en:wines","Bières":"en:beers","Spiritueux":"en:spirits","Champagnes":"en:champagnes","Cidres":"en:ciders",
+ "Sauces":"en:sauces","Huiles":"en:oils","Céréales":"en:breakfast-cereals",
+ "Surgelés":"en:frozen-foods","Glaces":"en:ice-creams","Snacks salés":"en:salty-snacks"
+};
+const $=id=>document.getElementById(id);
+const norm=t=>String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function setStatus(t,cls){const s=$("status");s.textContent=t;s.className=cls||"";}
+/* ---------- Codes-barres ---------- */
+const L=["0001101","0011001","0010011","0111101","0100011","0110001","0101111","0111011","0110111","0001011"];
+const G=["0100111","0110011","0011011","0100001","0011101","0111001","0000101","0010001","0001001","0010111"];
+const R=["1110010","1100110","1101100","1000010","1011100","1001110","1010000","1000100","1001000","1110100"];
+const PAR=["LLLLLL","LLGLGG","LLGGLG","LLGGGL","LGLLGG","LGGLLG","LGGGLL","LGLGLG","LGLGGL","LGGLGL"];
+function validEan(c){
+  if(!/^\d+$/.test(c)) return false;
+  let s=0; const d=c.slice(0,-1).split("").reverse();
+  d.forEach((x,i)=>s+=(+x)*(i%2===0?3:1));
+  return (10-s%10)%10===+c.slice(-1);
+}
+function normalize(code){
+  code=String(code||"").trim();
+  if(code.length===12) code="0"+code;          // UPC-A = EAN-13 précédé de 0
+  if((code.length===13||code.length===8)&&validEan(code)) return code;
+  return null;
+}
+function ean13Svg(code){
+  const mw=3,h=110,g=10,qL=9,qR=7,top=6, par=PAR[+code[0]];
+  let bits="101";
+  for(let i=0;i<6;i++) bits+=(par[i]==="L"?L:G)[+code[i+1]];
+  bits+="01010";
+  for(let i=0;i<6;i++) bits+=R[+code[i+7]];
+  bits+="101";
+  const guards=new Set([0,1,2,45,46,47,48,49,92,93,94]);
+  return draw(code,bits,95,qL,qR,mw,h,g,top,guards,
+    [[code[0],(qL-4)*mw,null],[code.slice(1,7),(qL+3)*mw,42*mw],[code.slice(7),(qL+50)*mw,42*mw]]);
+}
+function ean8Svg(code){
+  const mw=3,h=110,g=10,qL=7,qR=7,top=6;
+  let bits="101";
+  for(let i=0;i<4;i++) bits+=L[+code[i]];
+  bits+="01010";
+  for(let i=0;i<4;i++) bits+=R[+code[i+4]];
+  bits+="101";
+  const guards=new Set([0,1,2,31,32,33,34,35,64,65,66]);
+  return draw(code,bits,67,qL,qR,mw,h,g,top,guards,
+    [[code.slice(0,4),(qL+3)*mw,28*mw],[code.slice(4),(qL+36)*mw,28*mw]]);
+}
+function draw(code,bits,n,qL,qR,mw,h,g,top,guards,texts){
+  const W=(qL+n+qR)*mw,H=top+h+g+20; let r="";
+  for(let i=0;i<n;i++) if(bits[i]==="1") r+=`<rect x="${(qL+i)*mw}" y="${top}" width="${mw}" height="${guards.has(i)?h+g:h}" fill="#000"/>`;
+  const y=top+h+g+14;
+  texts.forEach(([t,x,w])=>{
+    r+= w===null
+      ? `<text x="${x}" y="${y}" font-size="20" text-anchor="middle">${t}</text>`
+      : `<text x="${x+w/2}" y="${y}" font-size="20" text-anchor="middle" textLength="${w-4}" lengthAdjust="spacing">${t}</text>`;
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Code-barres ${code}" font-family="monospace"><rect width="${W}" height="${H}" fill="#fff"/>${r}</svg>`;
+}
+const barcodeSvg=c=>c.length===8?ean8Svg(c):ean13Svg(c);
+
+
+/* ---------- Prix en ligne (Open Prices), facultatif ---------- */
+const priceCache=new Map(); let lastPrice=0, runId=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function cacheGet(k){try{const v=JSON.parse(localStorage.getItem("cbp:"+k)||"null");return v&&Date.now()-v.t<7*864e5?v.j:null;}catch(e){return null;}}
+function cacheSet(k,j){try{localStorage.setItem("cbp:"+k,JSON.stringify({t:Date.now(),j}));}catch(e){}}
+async function priceJson(url){
+  const c=cacheGet(url); if(c) return c;
+  for(let a=0;a<2;a++){
+    const w=Math.max(0,lastPrice+600-Date.now()); if(w) await sleep(w); lastPrice=Date.now();
+    try{const r=await fetch(url); if(r.ok){const j=await r.json(); cacheSet(url,j); return j;}}catch(e){}
+    if(a===0) await sleep(3000);
+  }
+  throw new Error("prix indisponibles");
+}
+function fmtMoney(v,cur){try{return new Intl.NumberFormat("fr-FR",{style:"currency",currency:cur||"EUR"}).format(v);}catch(e){return v+" "+(cur||"");}}
+async function loadPrice(code,shopWords){
+  const j=await priceJson(PRICES+"?product_code="+encodeURIComponent(code)+"&order_by=-date&size=20");
+  const items=(j.items||[]).filter(i=>i.price!=null&&!i.duplicate_of).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  if(!items.length) return "Aucun prix enregistré.";
+  const shopOf=i=>norm((i.location&&(i.location.osm_name+" "+(i.location.osm_brand||"")))||"");
+  const mine=items.find(i=>shopWords.some(w=>shopOf(i).includes(w)));
+  const it=mine||items[0];
+  const where=it.location?[it.location.osm_name,it.location.osm_address_city].filter(Boolean).join(", "):"";
+  const per=it.price_per==="KILOGRAM"?" / kg":"";
+  const d=it.date?new Date(it.date+"T12:00:00").toLocaleDateString("fr-FR"):"";
+  return `<strong>${esc(fmtMoney(it.price,it.currency))}${per}</strong> · ${esc(where)}${d?" · "+esc(d):""}`
+    +(mine?"":" <em>(autre enseigne : aucun prix relevé chez ce distributeur)</em>")+` <span>(${items.length} relevé${items.length>1?"s":""})</span>`;
+}
+async function loadPrices(slots,shopWords,run){
+  for(const el of slots){
+    if(run!==runId) return;
+    if(el.dataset.kind==="shop") continue;       // relevé local chez ce distributeur : rien à chercher
+    const code=el.dataset.code, had=el.innerHTML.trim();
+    if(!priceCache.has(code)){
+      if(!had) el.textContent="Recherche du prix…";
+      try{priceCache.set(code,await loadPrice(code,shopWords));}
+      catch(e){ if(!had) el.textContent="Prix indisponible pour le moment."; continue; }
+    }
+    const r=priceCache.get(code);
+    const useful=!r.startsWith("Aucun")&&!(el.dataset.kind==="other"&&r.includes("autre enseigne"));
+    if(useful) el.innerHTML=r; else if(!had) el.innerHTML=r;
+  }
+}
+
+/* ---------- Prix de l'index local ---------- */
+const catLabel=i=>String(IDX.categories[i]||"").replace(/^[a-z]{2}:/,"").replace(/-/g," ");
+const moisFr=m=>{const [y,mo]=String(m).split("-");return mo?mo+"/"+y:m;};
+function localPrice(p,dist){
+  const px=p[8]||{}, es=p[9]||{}, k=dist>=0?String(dist):null;
+  if(k&&px[k]) return {v:px[k][0],kind:"shop",date:px[k][1],n:px[k][2]};
+  if(px.a) return {v:px.a[0],kind:"other",date:px.a[1],n:px.a[2]};
+  const e=(k&&es[k])||es.a;
+  if(e) return {v:e[0],kind:"est",cat:catLabel(e[1]),n:e[2]};
+  return null;
+}
+function priceHtml(lp){
+  const m=esc(fmtMoney(lp.v,"EUR"));
+  if(lp.kind==="shop") return `<strong>${m}</strong> · relevé ${esc(moisFr(lp.date))} <span>(${lp.n} relevé${lp.n>1?"s":""})</span>`;
+  if(lp.kind==="other") return `<strong>${m}</strong> · relevé ${esc(moisFr(lp.date))} <em>(autre enseigne : aucun relevé chez ce distributeur)</em>`;
+  return `<strong>≈ ${m}</strong> · <em>estimation</em> <span>(prix au kilo médian de ${lp.n} produits « ${esc(lp.cat)} »)</span>`;
+}
+
+/* ---------- Recherche locale ---------- */
+let IDX=null, matches=[], shown=0, shopWords=[], lastOrder="pop";
+function init(){
+  if(typeof INDEX_PRODUITS==="undefined"){ $("setup").hidden=false; return; }
+  IDX=INDEX_PRODUITS;
+  $("formPanel").hidden=false;
+  $("dist").add(new Option("Tous les distributeurs","-1"));
+  IDX.distributeurs.forEach((d,i)=>$("dist").add(new Option(d.nom,String(i))));
+  Object.keys(CATEGORIES).forEach(k=>$("cat").add(new Option(k,CATEGORIES[k])));
+  $("cat").add(new Option("Autre (saisir un mot)","__custom"));
+  $("cat").onchange=()=>{$("catWrap").hidden=$("cat").value!=="__custom";};
+  $("note").textContent=`Base locale : ${IDX.produits.length.toLocaleString("fr-FR")} produits, générée le ${IDX.genere} à partir de ${IDX.source}. Données Open Food Facts (licence ODbL).`;
+  if(!IDX.prix){[...$("sort").options].forEach(o=>{if(o.value!=="pop"){o.disabled=true;o.textContent+=" (lancez ajouter_prix.py)";}});}
+  else $("note").textContent+=` Prix : relevés Open Prices (${IDX.prix.releves.toLocaleString("fr-FR")} utilisés, fichier du ${IDX.prix.genere}) ; les estimations sont indiquées par ≈.`;
+  setStatus(`Prêt : ${IDX.produits.length.toLocaleString("fr-FR")} produits dans la base locale.`);
+}
+function targetGrams(){
+  const raw=$("w").value.trim().replace(",",".").replace(/\s/g,"");
+  if(!raw) return null;
+  if(!/^\d+(\.\d+)?$/.test(raw)) return NaN;
+  return parseFloat(raw)*({g:1,kg:1000,ml:1,cl:10,l:1000}[$("unit").value]);
+}
+function categoryMatcher(){
+  let v=$("cat").value;
+  if(v==="") return null;
+  if(v==="__custom"){
+    const t=norm($("catCustom").value.trim()); if(!t) return null;
+    const set=new Set(); IDX.categories.forEach((c,i)=>{if(norm(c).includes(t)) set.add(i);});
+    return set;
+  }
+  const i=IDX.categories.indexOf(v);
+  return new Set(i<0?[]:[i]);
+}
+function search(){
+  const target=targetGrams(), tol=parseFloat($("tol").value);
+  if(Number.isNaN(target)){setStatus("Le poids doit être un nombre, par exemple 400 ou 1,5.","error");return;}
+  const dist=parseInt($("dist").value,10);
+  const cats=categoryMatcher();
+  const words=norm($("kw").value).split(/\s+/).filter(Boolean);
+  shopWords = dist>=0 ? (IDX.distributeurs[dist].magasins||[]) : [];
+  matches=[];
+  const onlyPrice=$("onlyPrice").checked, order=$("sort").value; lastOrder=order;
+  for(const p of IDX.produits){
+    if(dist>=0&&!p[5].includes(dist)) continue;
+    if(cats&&!p[6].some(c=>cats.has(c))) continue;
+    if(target!==null){
+      const g=p[4]; if(!(g>0)) continue;
+      if(tol===0?Math.abs(g-target)>0.5:Math.abs(g-target)>target*tol) continue;
+    }
+    if(words.length){const n=norm(p[1]); if(!words.every(w=>n.includes(w))) continue;}
+    const c=normalize(p[0]); if(!c) continue;
+    const lp=localPrice(p,dist);
+    if(onlyPrice&&!lp) continue;
+    matches.push([p,c,lp]);
+  }
+  if(order!=="pop") matches.sort((x,y)=>{
+    const a=x[2]?x[2].v:null, b=y[2]?y[2].v:null;
+    if(a===null&&b===null) return 0; if(a===null) return 1; if(b===null) return -1;
+    return order==="asc"?a-b:b-a;
+  });
+  shown=0; $("results").innerHTML=""; runId++;
+  if(!matches.length){setStatus("Aucun produit trouvé. Essayez une tolérance plus large, moins de mots-clés ou \"Toutes catégories\".","error");$("more").hidden=true;return;}
+  showMore();
+}
+function showMore(){
+  const run=++runId;
+  const part=matches.slice(shown,shown+PAGE); shown+=part.length;
+  const box=document.createElement("div"); box.style.display="contents";
+  box.innerHTML=part.map(([p,c,lp])=>`
+    <article class="card">
+      <h3>${esc(p[1])}</h3>
+      <div class="meta"><span>${esc(p[2])}</span><span>${esc(p[3])}</span></div>
+      <div class="bars" title="Toucher pour agrandir">${barcodeSvg(c)}</div>
+      <div class="code">${esc(c)}</div>
+      <div class="price" data-code="${esc(c)}" data-kind="${lp?lp.kind:""}">${lp?priceHtml(lp):(priceCache.has(c)?priceCache.get(c):"")}</div>
+      <a href="https://world.openfoodfacts.org/product/${encodeURIComponent(p[0])}" target="_blank" rel="noopener">Fiche Open Food Facts</a>
+    </article>`).join("");
+  $("results").append(box);
+  $("more").hidden=shown>=matches.length;
+  setStatus(`${matches.length.toLocaleString("fr-FR")} produits correspondent. ${shown} affichés. ${lastOrder==="asc"?"Tri : prix croissant (les produits sans prix en dernier).":lastOrder==="desc"?"Tri : prix décroissant (les produits sans prix en dernier).":"Tri : du plus scanné au moins scanné."}`,"ok");
+  if($("withPrice").checked) loadPrices([...box.querySelectorAll(".price")],shopWords,run);
+}
+$("form").addEventListener("submit",e=>{e.preventDefault();if(IDX) search();});
+$("more").onclick=showMore;
+
+async function loadIndex(){
+  let lastErr;
+  for(const name of ["index_produits.js.gz","index_produits.js"]){
+    try{
+      const r=await fetch(name); if(!r.ok) throw new Error(name+" : "+r.status);
+      const copie=r.clone();
+      let buf=await r.arrayBuffer(); const u8=new Uint8Array(buf);
+      if(u8[0]===0x1f&&u8[1]===0x8b){
+        if(typeof DecompressionStream==="undefined") throw new Error("navigateur trop ancien pour lire le fichier compressé");
+        buf=await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+      }
+      const t=new TextDecoder().decode(buf);
+      window.INDEX_PRODUITS=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1));
+      /* garde une copie sur l'appareil pour le mode hors ligne (même nom de cache que sw.js) */
+      try{ const c=await caches.open("codes-barres-v1"); await c.put(name,copie); }catch(e){}
+      return;
+    }catch(e){lastErr=e;}
+  }
+  throw lastErr;
+}
+/* Code-barres en plein écran : écran blanc, pour le scanner plus facilement. */
+document.addEventListener("click",e=>{
+  const bars=e.target.closest(".bars"); if(!bars) return;
+  const card=bars.closest(".card");
+  $("full").innerHTML=bars.innerHTML+`<p>${esc(card.querySelector("h3").textContent)}<br><strong>${esc(card.querySelector(".code").textContent)}</strong><br>Touchez pour fermer.</p>`;
+  $("full").hidden=false;
+});
+$("full").onclick=()=>{$("full").hidden=true;};
+$("reload").onclick=async()=>{
+  try{ for(const k of await caches.keys()) await caches.delete(k); }catch(e){}
+  try{ for(const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); }catch(e){}
+  location.reload();
+};
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+setStatus("Chargement de la base de données…");
+loadIndex().then(init).catch(()=>{ setStatus(""); $("setup").hidden=false; });
+</script>
+</body>
+</html>
