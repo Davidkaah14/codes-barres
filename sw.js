@@ -1,5 +1,5 @@
 /* Service worker : garde l'application et la base de données sur l'appareil (utilisable hors ligne). */
-const CACHE = "codes-barres-v1";
+const CACHE = "codes-barres-v2";
 const COQUILLE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -13,8 +13,13 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET" || u.origin !== location.origin) return;   // prix en ligne : réseau direct
-  e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-    if (res.ok) { const copie = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copie)); }
-    return res;
-  })));
+  const page = u.pathname.endsWith("/") || /\/(index\.html|sw\.js|manifest\.webmanifest)$/.test(u.pathname);
+  const garder = res => { if (res.ok) { const copie = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copie)); } return res; };
+  if (page) {
+    // l'application elle-même : réseau d'abord (les mises à jour arrivent seules), copie locale hors ligne
+    e.respondWith(fetch(e.request).then(garder).catch(() => caches.match(e.request)));
+  } else {
+    // la base de données et les icônes : copie locale d'abord (rapide, hors ligne)
+    e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request).then(garder)));
+  }
 });

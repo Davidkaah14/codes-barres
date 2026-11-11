@@ -71,6 +71,24 @@ select,input{font-size:16px}
 #full svg{width:100%;max-width:640px;height:auto}
 #full p{margin:0;color:#333;font:15px/1.4 system-ui,sans-serif;text-align:center}
 .reload{background:none;border:0;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+.printbtn{font:inherit;font-size:.85rem;font-weight:600;align-self:flex-start;padding:6px 12px;border-radius:6px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer}
+#label{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:max(16px,env(safe-area-inset-top,0px)) 16px max(16px,env(safe-area-inset-bottom,0px))}
+#label .sheet{background:var(--surface);color:var(--fg);border-radius:8px;border:1px solid var(--line);padding:16px;width:100%;max-width:440px;display:flex;flex-direction:column;gap:12px}
+#label h2{margin:0;font-size:1.05rem}
+#labelImg{background:#fff;border:1px solid var(--line);border-radius:4px;max-width:100%;align-self:center;image-rendering:pixelated}
+#label .actions{display:flex;flex-wrap:wrap;gap:8px}
+#label .actions button{font:inherit;font-weight:600;padding:10px 14px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+#label .actions .primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+#label .paper{display:flex;align-items:center;gap:8px;font-size:.9rem}
+#label .paper select{width:auto}
+#label .tip{margin:0;font-size:.8rem;color:var(--muted)}
+@media print{
+  body>*:not(#label){display:none!important}
+  #label{position:static;background:none;padding:0;overflow:visible}
+  #label .sheet{border:0;padding:0;max-width:none;background:none}
+  #label .sheet>*:not(#labelImg){display:none!important}
+  #labelImg{border:0;width:48mm;max-width:none}
+}
 .more{display:flex;justify-content:center}
 .more button{font:inherit;font-weight:600;padding:10px 20px;border-radius:6px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer}
 .setup ol{margin:8px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -117,6 +135,21 @@ code{font-family:var(--mono);background:var(--bg);padding:1px 5px;border-radius:
 <div class="results" id="results"></div>
 <div class="more"><button id="more" type="button" hidden>Afficher plus de produits</button></div>
 <div id="full" hidden></div>
+<div id="label" hidden>
+  <div class="sheet" role="dialog" aria-label="Étiquette à imprimer">
+    <h2>Étiquette à imprimer</h2>
+    <img id="labelImg" alt="Aperçu de l'étiquette">
+    <div class="paper"><label for="paper" style="margin:0">Papier</label>
+      <select id="paper"><option value="384">58 mm (le plus courant)</option><option value="576">80 mm</option></select></div>
+    <div class="actions">
+      <button class="primary" id="labelShare" type="button" hidden>Envoyer à l'imprimante</button>
+      <button id="labelSave" type="button">Enregistrer l'image</button>
+      <button id="labelPrint" type="button">Imprimer</button>
+      <button id="labelClose" type="button">Fermer</button>
+    </div>
+    <p class="tip" id="labelTip">« Envoyer à l'imprimante » ouvre la liste des applications du téléphone : choisissez l'application de votre imprimante.</p>
+  </div>
+</div>
 <p class="note" id="note"></p>
 <p class="note"><button class="reload" id="reload" type="button">Mettre à jour la base de données</button> (efface la copie gardée sur cet appareil et la retélécharge)</p>
 </div>
@@ -330,6 +363,7 @@ function showMore(){
       <div class="bars" title="Toucher pour agrandir">${barcodeSvg(c)}</div>
       <div class="code">${esc(c)}</div>
       <div class="price" data-code="${esc(c)}" data-kind="${lp?lp.kind:""}">${lp?priceHtml(lp):(priceCache.has(c)?priceCache.get(c):"")}</div>
+      <button class="printbtn" type="button" data-code="${esc(c)}">Imprimer l'étiquette</button>
       <a href="https://world.openfoodfacts.org/product/${encodeURIComponent(p[0])}" target="_blank" rel="noopener">Fiche Open Food Facts</a>
     </article>`).join("");
   $("results").append(box);
@@ -354,12 +388,59 @@ async function loadIndex(){
       const t=new TextDecoder().decode(buf);
       window.INDEX_PRODUITS=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1));
       /* garde une copie sur l'appareil pour le mode hors ligne (même nom de cache que sw.js) */
-      try{ const c=await caches.open("codes-barres-v1"); await c.put(name,copie); }catch(e){}
+      try{ const c=await caches.open("codes-barres-v2"); await c.put(name,copie); }catch(e){}
       return;
     }catch(e){lastErr=e;}
   }
   throw lastErr;
 }
+/* ---------- Étiquette imprimable ---------- */
+let labelCur=null, labelBlob=null;
+async function renderLabel(d,W){
+  const svg=barcodeSvg(d.code);
+  const img=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ko;i.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);});
+  const m=svg.match(/viewBox="0 0 (\d+) (\d+)"/), vw=+m[1], vh=+m[2];
+  const s=Math.max(1,Math.floor((W-16)/vw));            // largeur de module entière : barres nettes
+  const pad=12, c=document.createElement("canvas");
+  c.width=W; c.height=vh*s+2*pad;
+  const g=c.getContext("2d");
+  g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height);
+  g.imageSmoothingEnabled=false;
+  g.drawImage(img,Math.round((W-vw*s)/2),pad,vw*s,vh*s);   // barres + numéro, rien d'autre
+  return c;
+}
+async function showLabel(){
+  const W=parseInt($("paper").value,10);
+  const c=await renderLabel(labelCur,W);
+  labelBlob=await new Promise(r=>c.toBlob(r,"image/png"));
+  $("labelImg").src=URL.createObjectURL(labelBlob);
+  $("labelImg").style.width=Math.min(W,380)+"px";
+}
+document.addEventListener("click",async e=>{
+  const b=e.target.closest(".printbtn"); if(!b) return;
+  const card=b.closest(".card");
+  labelCur={code:b.dataset.code,name:card.querySelector("h3").textContent};
+  try{
+    const f=new File([new Blob(["x"],{type:"image/png"})],"t.png",{type:"image/png"});
+    $("labelShare").hidden=!(navigator.canShare&&navigator.canShare({files:[f]}));
+  }catch(err){ $("labelShare").hidden=true; }
+  $("label").hidden=false; await showLabel();
+});
+$("paper").onchange=()=>labelCur&&showLabel();
+$("labelClose").onclick=()=>{$("label").hidden=true;};
+$("label").addEventListener("click",e=>{if(e.target===$("label")) $("label").hidden=true;});
+$("labelPrint").onclick=()=>window.print();
+$("labelSave").onclick=()=>{
+  if(!labelBlob) return;
+  const a=document.createElement("a"); a.href=URL.createObjectURL(labelBlob); a.download="etiquette-"+labelCur.code+".png";
+  document.body.append(a); a.click(); a.remove();
+};
+$("labelShare").onclick=()=>{
+  if(!labelBlob) return;
+  const f=new File([labelBlob],"etiquette-"+labelCur.code+".png",{type:"image/png"});
+  navigator.share({files:[f],title:labelCur.name}).catch(()=>{});
+};
+
 /* Code-barres en plein écran : écran blanc, pour le scanner plus facilement. */
 document.addEventListener("click",e=>{
   const bars=e.target.closest(".bars"); if(!bars) return;
