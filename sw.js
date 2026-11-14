@@ -1,6 +1,6 @@
 /* Service worker : garde l'application et la base de données sur l'appareil (utilisable hors ligne). */
 const CACHE = "codes-barres-v2";
-const COQUILLE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+const COQUILLE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "zxing.min.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(COQUILLE)).then(() => self.skipWaiting()));
